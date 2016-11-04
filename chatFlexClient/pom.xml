@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.chat</groupId>
+    <artifactId>chatFlexClient</artifactId>
+    <version>0.0.1</version>
+    <packaging>swf</packaging>
+
+    <name>chatFlexClient</name>
+
+    <build>
+        <sourceDirectory>src/main/flex</sourceDirectory>
+        <finalName>chat</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.sonatype.flexmojos</groupId>
+                <artifactId>flexmojos-maven-plugin</artifactId>
+                <version>4.2-beta</version>
+                <extensions>true</extensions>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.adobe.flex</groupId>
+                        <artifactId>compiler</artifactId>
+                        <version>4.5.1.21328</version>
+                        <type>pom</type>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>wrapper</goal>
+                        </goals>
+                        <configuration>
+                            <parameters>
+                                <title>Chat</title>
+                                <version_major>10</version_major>
+                                <application>chat</application>
+                                <width>100%</width>
+                                <height>100%</height>
+                            </parameters>
+                        </configuration>
+                    </execution>
+                </executions>
+                
+                <configuration>
+                    <compiledLocales>
+                        <locale>pt_BR</locale>
+                    </compiledLocales>
+                    <generateHtmlWrapper>true</generateHtmlWrapper>
+                    <sourceFile>Main.mxml</sourceFile>
+                    <contextRoot>chat</contextRoot>
+                    <finalName>chat</finalName>
+                    <contextRoot>/chat</contextRoot>
+                </configuration>
+            </plugin>
+            <plugin>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <version>2.7</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <properties>
+        <maven.test.skip>true</maven.test.skip>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+
+    <dependencies>
+        
+        <dependency>
+            <groupId>com.adobe.flex</groupId>
+            <artifactId>compiler</artifactId>
+            <version>4.5.1.21328</version>
+            <type>pom</type>
+        </dependency>
+        <dependency>
+            <groupId>com.adobe.flex.framework</groupId>
+            <artifactId>flex-framework</artifactId>
+            <version>4.5.1.21328</version>
+            <type>pom</type>
+        </dependency>
+        <dependency>
+            <groupId>com.adobe</groupId>
+            <artifactId>as3corelib</artifactId>
+            <version>0.92.1</version>
+            <type>swc</type>
+        </dependency>
+    </dependencies>
+
+
+
+    <repositories>
+        <repository>
+            <id>flexmojos</id>
+            <url>http://repository.sonatype.org/content/groups/flexgroup/</url>
+        </repository>
+        <repository>
+            <id>openscales.org</id>
+            <url>http://openscales.org/nexus/content/repositories/releases/</url>
+        </repository>
+    </repositories>
+
+    <pluginRepositories>
+        <pluginRepository>
+            <id>flexmojos-plugin</id>
+            <url>http://repository.sonatype.org/content/groups/flexgroup/</url>
+        </pluginRepository>
+    </pluginRepositories>
+
+</project>

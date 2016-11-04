@@ -1,0 +1,472 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application name="chatLogic"
+               xmlns:fx="http://ns.adobe.com/mxml/2009"
+               xmlns:s="library://ns.adobe.com/flex/spark"
+               creationComplete="init()">
+	
+    <s:layout>
+        <s:HorizontalLayout horizontalAlign="center" verticalAlign="middle" />
+    </s:layout>
+	
+    <s:states>
+        <s:State name="login"/>
+        <s:State name="running"/>
+    </s:states>
+	
+    <s:HGroup includeIn="login">
+
+        <s:Label text="Usuário" />
+        <s:TextInput id="txtUsuario" keyUp="txtUsuarioKeyUpHandler(event)" />
+		
+        <s:Button label="Login" click="entrar(event)"/>
+			
+    </s:HGroup>
+	
+    <s:VGroup width="99%" height="99%"  includeIn="running">
+	
+        <s:HGroup width="100%" height="80%">
+            <s:VGroup width="40%" height="100%">
+                <s:TextArea id="txtChat" width="100%" height="65%" editable="false">
+					
+                </s:TextArea>
+				
+                <s:HGroup width="100%" height="10%">
+                    <s:TextInput id="txtSend" enabled="{chat!=null}"  width="75%" height="100%" keyUp="txtSendKeyUpHandler(event)">
+						
+                    </s:TextInput>
+					
+                    <s:Button label="Send" enabled="{chat!=null}"  width="25%" height="100%" click="send(event)">
+						
+                    </s:Button>
+					
+                </s:HGroup>
+				
+                <s:TextArea id="txtServer" height="25%"  width="100%" editable="false">
+                </s:TextArea>
+            </s:VGroup>
+            <s:VGroup width="40%" height="100%">
+				
+                <s:DataGrid id="gridChats" width="100%" height="95%" dataProvider="{chats}">
+					
+                    <s:columns>
+                        <s:ArrayList>
+                            <s:GridColumn dataField="id" headerText="Código"/>
+                            <s:GridColumn dataField="nome" headerText="Chat"/>
+                            <s:GridColumn dataField="idSAC" headerText="SAC"/>
+                            <s:GridColumn dataField="usuarios.length" headerText="Qtd. Online"/>
+                        </s:ArrayList>
+                    </s:columns>
+					
+                </s:DataGrid>
+				
+                <s:HGroup width="100%" height="5%">
+                    <s:Button width="50%" height="100%" label="{chat == null?'Entrar no Chat':'Sair do Chat'}" click="entrarSairChat(event)">
+						
+                    </s:Button>
+                    <s:Button width="50%" height="100%" label="Finalizar Chat" enabled="{chat != null}" click="finalizarChat(event)">
+						
+                    </s:Button>
+                </s:HGroup>
+				
+            </s:VGroup>
+            <s:VGroup width="20%" height="100%">
+				
+                <s:DataGrid width="100%" height="90%" dataProvider="{usuarios}" id="gridUsuarios">
+					
+                    <s:columns>
+                        <s:ArrayList>
+                            <s:GridColumn dataField="id" headerText="Código"/>
+                            <s:GridColumn dataField="nome" headerText="Usuário"/>
+                        </s:ArrayList>
+                    </s:columns>
+					
+                </s:DataGrid>
+				
+                <s:Button width="100%" height="5%" label="Convidar" enabled="{!(chat == null || gridUsuarios.selectedItem == null)}" click="convidar(event)"/>
+				
+                <s:Button width="100%" height="5%" label="Sair" click="sair(event)"/>
+				
+            </s:VGroup>
+        </s:HGroup>
+		
+        <s:TextArea id="txtProtocolo" visible="{qs.parameters.debug == 'true'}"  width="100%" height="20%" editable="false">
+			
+        </s:TextArea>
+		
+    </s:VGroup>
+	
+	
+	
+	
+    <fx:Script>
+		<![CDATA[
+			import com.adobe.serialization.json.JSON;
+			
+			import chat.core.message.impl.ConnectedUserMessage;
+			import chat.core.message.impl.ConnectionChatMessage;
+			import chat.core.message.impl.ConnectionMessage;
+			import chat.core.message.impl.DisconnectChatMessage;
+			import chat.core.message.impl.DisconnectMessage;
+			import chat.core.message.impl.FinalizeChatMessage;
+			import chat.core.message.impl.InitiateChatMessage;
+			import chat.core.message.impl.InitiatedChatMessage;
+			import chat.core.message.impl.InviteChatMessage;
+			import chat.core.message.impl.TalkMessage;
+			import chat.entity.ChatRoom;
+			import chat.entity.Usuario;
+			import chat.util.QueryString;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.formatters.DateFormatter;
+			
+			private var s:Socket;
+			[Bindable]
+			private var usuario:Usuario;
+			[Bindable]
+			private var chat:ChatRoom;
+			[Bindable]
+			private var usuarios:ArrayCollection = new ArrayCollection();
+			[Bindable]
+			private var chats:ArrayCollection = new ArrayCollection();
+			
+			private var df:DateFormatter = new DateFormatter();
+			
+			[Bindable]
+			private var qs:QueryString = new QueryString();
+			
+			protected function init():void {
+				df.formatString = "DD/MM HH:NN:SS";
+				focusManager.setFocus(txtUsuario);
+				
+			}
+			
+			protected function connect():void{
+				Security.loadPolicyFile("xmlsocket://" + qs.parameters.ip + ":12346");
+				
+				s = new Socket();
+				
+				s.addEventListener(Event.CLOSE, closeHandler);
+				s.addEventListener(Event.CONNECT, connectHandler);
+				s.addEventListener(IOErrorEvent.IO_ERROR, ioErrorHandler);
+				s.addEventListener(SecurityErrorEvent.SECURITY_ERROR, securityErrorHandler);
+				s.addEventListener(ProgressEvent.SOCKET_DATA, socketDataHandler);
+				s.connect(qs.parameters.ip, 12345);
+			}
+			
+			private function closeHandler(event:Event):void {
+				addMsgProtocolo("SERVER DOWN: " + event);
+				chat = null;
+				usuario = null;
+				currentState = "login";
+				
+			}
+			
+			private function connectHandler(event:Event):void {
+				addMsgProtocolo("SERVER CONNECTED: " + event);
+				
+				var u:Usuario = new Usuario();
+				u.nome = txtUsuario.text;
+				
+				sendMsg(new ConnectionMessage(u).asJSON());
+			}
+			
+			private function ioErrorHandler(event:IOErrorEvent):void {
+				addMsgProtocolo("IO ERROR: " + event);
+			}
+			
+			private function securityErrorHandler(event:SecurityErrorEvent):void {
+				addMsgProtocolo("SECURITY ERROR: " + event);
+			}
+			
+			private function socketDataHandler(event:ProgressEvent):void {
+				while(s.bytesAvailable) {
+					var m:String = s.readUTF();
+					
+					addMsgProtocolo("MSG SERVER -> CLIENT: " + m);
+					
+					var msg:Object = JSON.decode(m);
+					
+					if (msg.type == "chat.core.message.impl.ConnectionMessage") {
+						connectionMessage(msg);
+					} else if (msg.type == "chat.core.message.impl.DisconnectMessage") {
+						disconnectMessage(msg);
+					} else if (msg.type == "chat.core.message.impl.InitiateChatMessage") {
+						initiateChatMessage(msg);
+					} else if (msg.type == "chat.core.message.impl.TalkMessage") {
+						talkMessage(msg);
+					} else if (msg.type == "chat.core.message.impl.ConnectionChatMessage") {
+						connectionChatMessage(msg);
+					} else if (msg.type == "chat.core.message.impl.DisconnectChatMessage") {
+						disconnectChatMessage(msg);
+					} else if (msg.type == "chat.core.message.impl.FinalizeChatMessage") {
+						finalizeChatMessage(msg);
+					} else if (msg.type == "chat.core.message.impl.InitiatedChatMessage") {
+						initiatedChatMessage(msg);
+					} else if (msg.type == "chat.core.message.impl.ConnectedUserMessage") {
+						connectedUserMessage(msg);
+					} else if (msg.type == "chat.core.message.impl.RefreshChatMessage") {
+						refreshChatMessage(msg);
+					} else if (msg.type == "chat.core.message.impl.InviteChatMessage") {
+						inviteChatMessage(msg);
+					}
+					
+				}
+			}
+			
+			private function send(event:MouseEvent):void{
+				var c:ChatRoom = new ChatRoom();
+				c.id = chat.id;
+				sendMsg(new TalkMessage(usuario, c, txtSend.text).asJSON());
+				txtSend.text = "";
+			}
+			
+			private function entrar(event:MouseEvent):void{
+				connect();
+				currentState = "running";
+			}
+			
+			
+			private function talkMessage(m:Object):void {
+				if (m.chat == null) {
+					
+				} else {
+					addMsgChat("[" + formatDate(m.time) + "] " + m.usuario.nome + ": " + m.talk);
+				}
+			}
+			
+			private function connectionMessage(m:Object):void {
+				if (usuario == null) {
+					usuario = new Usuario();
+					usuario.id = m.usuario.id;
+					usuario.nome = m.usuario.nome;
+					
+					sendMsg(new InitiatedChatMessage(usuario).asJSON());
+					sendMsg(new ConnectedUserMessage(usuario).asJSON());
+					
+					txtChat.text = "";
+				}
+				
+				if (m.usuario.id == usuario.id) {
+					addMsgServidor("[" + formatDate(m.time) + "] BEM VINDO " + m.usuario.nome + "!");
+				} else {
+					addMsgServidor("[" + formatDate(m.time) + "] " + m.usuario.nome + " ACABOU DE SE CONECTAR.");
+					addUser(m.usuario);
+				}
+			}
+			
+			private function connectionChatMessage(m:Object):void {
+				
+				if (m.usuario.id == usuario.id) {
+					if (chat == null) {
+						chat = new ChatRoom();
+						chat.id = m.chat.id;
+						chat.nome = m.chat.nome;
+						chat.open = m.chat.open;
+						chat.usuarios = m.chat.usuarios;
+						chat.history = m.chat.history;
+						loadChatHistory();
+					}
+					addMsgServidor("[" + formatDate(m.time) + "] BEM VINDO A SALA " + m.chat.nome + "!");
+				} else {
+					addMsgServidor("[" + formatDate(m.time) + "] " + m.usuario.nome + " ACABOU DE ENTRAR NA SALA " + m.chat.nome);
+				}
+				refreshChat(m.chat);
+			}
+			
+			private function refreshChatMessage(m:Object):void {
+				refreshChat(m.chat);
+				
+			}
+			
+			private function inviteChatMessage(m:Object):void {
+				Alert.yesLabel = "Sim";
+				Alert.noLabel = "Não";
+				Alert.show("O usuário " + m.usuario.nome 
+					+ " está te convidando para a sala " 
+					+ m.chat.nome + ", deseja aceitar?", "Atenção", 3, this, function(event:CloseEvent):void{
+						if (event.detail == Alert.YES) {
+							var c:ChatRoom = new ChatRoom();
+							if (chat !=null ) {
+								c.id = chat.id;
+								sendMsg(new DisconnectChatMessage(usuario, c).asJSON());
+							}
+							c.id = m.chat.id;
+							sendMsg(new ConnectionChatMessage(usuario, c).asJSON());
+						}
+					}); 
+			}
+			
+			private function refreshChat(c:Object):void {
+				for (var i:int = 0; i < chats.length; i++) {
+					if (c.id == chats.getItemAt(i).id) {
+						removeChat(c);
+						chats.addItemAt(c, i);
+					}
+				}
+			}
+			
+			private function loadChatHistory():void {
+				for (var i:int = 0; i < chat.history.length; i++) {
+					addMsgChat(chat.history[i]);
+				}
+			}
+			
+			private function disconnectChatMessage(m:Object):void {
+				
+				if (m.usuario.id == usuario.id) {
+					addMsgServidor("[" + formatDate(m.time) + "] ADEUS A SALA " + m.chat.nome + "!");
+					chat = null;
+					txtChat.text = "";
+				} else {
+					addMsgServidor("[" + formatDate(m.time) + "] " + m.usuario.nome + " ACABOU DE SAIR NA SALA " + m.chat.nome);
+				}
+				refreshChat(m.chat);
+			}
+			
+			private function disconnectMessage(m:Object):void {
+				if (m.usuario.id == usuario.id) {
+					addMsgServidor("[" + formatDate(m.time) + "] ADEUS " + m.usuario.nome + "!");
+					chat = null;
+					usuario = null;
+					currentState = "login";
+					s.close();
+				} else {
+					addMsgServidor("[" + formatDate(m.time) + "] " + m.usuario.nome + " ACABOU DE SE DESCONECTAR.");
+					removeUser(m.usuario);
+				}
+			}
+			
+			private function initiateChatMessage(m:Object):void {
+				addChat(m.chat);
+			}
+			
+			private function finalizeChatMessage(m:Object):void {
+				if (usuario.id == m.usuario.id) {
+					addMsgServidor("[" + formatDate(m.time) + "] ADEUS A SALA: " + m.chat.nome);
+				} else {
+					addMsgServidor("[" + formatDate(m.time) + "] " + m.usuario.nome + " ACABA DE FECHAR A SALA: " + m.chat.nome);
+				}
+				removeChat(m.chat);
+				
+				if (chat != null && chat.id == m.chat.id) {
+					chat = null;
+				}
+			}
+			
+			private function initiatedChatMessage(m:Object):void {
+				this.chats = new ArrayCollection(m.chats);
+			}
+			
+			private function connectedUserMessage(m:Object):void {
+				usuarios = new ArrayCollection();
+				for (var i:int = 0; i < m.usuarios.length; i++) {
+					if (m.usuarios[i].id != usuario.id) {
+						addUser(m.usuarios[i]);	
+					}
+				}
+				
+			}
+			
+			private function addUser(u:Object):void {
+				this.usuarios.addItem(u);
+			}
+			
+			private function addChat(c:Object):void {
+				this.chats.addItem(c);
+			}
+			
+			private function removeUser(u:Object):void {
+				for (var i:int = 0; i < usuarios.length; i++) {
+					if (usuarios[i].id == u.id) {
+						this.usuarios.removeItemAt(i);	
+					}
+				}
+			}
+			
+			private function removeChat(c:Object):void {
+				for (var i:int = 0; i < chats.length; i++) {
+					if (chats[i].id == c.id) {
+						this.chats.removeItemAt(i);	
+					}
+				}
+			}
+			
+			private function addMsgProtocolo(s:String):void {
+				txtProtocolo.appendText("\n" +s);
+			}
+			
+			private function addMsgServidor(s:String):void {
+				txtServer.appendText("\n" +s);
+			}
+			
+			private function addMsgChat(s:String):void {
+				txtChat.appendText("\n" +s);
+			}
+			
+			private function sendMsg(d:String):void {
+				addMsgProtocolo("MSG CLIENT -> SERVER: " + d);
+				s.writeUTF(d);
+				s.flush();
+			}
+			
+			private function txtSendKeyUpHandler(event:KeyboardEvent):void {
+				if (event.keyCode == 13) {
+					send(null);
+				}			
+			}
+			
+			private function formatDate(l:Number):String {
+				return  df.format(parseToDate(l));
+			}
+			
+			private function parseToDate(l:Number):Date {
+				return new Date(l);
+			}
+			
+			private function convidar(event:MouseEvent):void {
+				var uD:Usuario = new Usuario();
+				uD.id = gridUsuarios.selectedItem.id;
+				var c:ChatRoom = new ChatRoom();
+				c.id = chat.id;
+				sendMsg(new InviteChatMessage(usuario, c, uD).asJSON());
+			}
+			
+			private function sair(event:MouseEvent):void {
+				sendMsg(new DisconnectMessage(usuario).asJSON());
+			}
+			
+			protected function txtUsuarioKeyUpHandler(event:KeyboardEvent):void {
+				if (event.keyCode == 13) {
+					entrar(null);
+				}
+			}
+			
+			private function entrarSairChat(event:MouseEvent):void {
+				
+				var c:ChatRoom = new ChatRoom();
+				if (chat==null) {
+					if (gridChats.selectedItem !=null) {
+						c.id = gridChats.selectedItem.id;
+						sendMsg(new ConnectionChatMessage(usuario, c).asJSON());
+					}
+				} else {
+					c.id = chat.id;
+					sendMsg(new DisconnectChatMessage(usuario, c).asJSON());
+				}
+				
+				
+			}
+			
+			private function finalizarChat(event:MouseEvent):void {
+				var c:ChatRoom = new ChatRoom();
+				c.id = chat.id;
+				sendMsg(new FinalizeChatMessage(usuario, c).asJSON());
+			}
+			
+		]]>
+    </fx:Script>
+	
+	
+</s:Application>
